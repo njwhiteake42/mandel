@@ -14,7 +14,6 @@ struct screen {
 	bool done;
 	int current_scale, workers;
 	int time;
-	uint32_t data[600][600];
 };
 
 struct scale_points {
@@ -65,12 +64,9 @@ void tick() {
 		if (s->done) continue;
 		
 		if (s->spacing == 1) {
-			//printf("%d %d\n", s->current_x, s->offset);
-			//s->data[s->current_x][s->offset] = get_pixel(s->current_x, s->offset);
 			plot((i * 600) + s->current_x * s->pix_size, s->offset * s->pix_size, s->pix_size, get_pixel(s->current_x, s->offset, s->scale));
 		} else {
 			for (int y = s->offset; y < s->scale; y += s->spacing) {
-				//s->data[s->current_x][i] = get_pixel(s->current_x, i);
 				plot((i * 600) + (s->current_x * s->pix_size), y * s->pix_size, s->pix_size, get_pixel(s->current_x, y, s->scale));
 			}
 		}
@@ -152,7 +148,7 @@ int main() {
 		SDL_Quit();
 	}
 	
-	SDL_Window *window = SDL_CreateWindow("Mandalbrot Demo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1800, 800, 0);
+	SDL_Window *window = SDL_CreateWindow("Mandelbrot Demo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1800, 800, 0);
 	surface = SDL_GetWindowSurface(window);
 	
 	SDL_TimerID draw_timer = SDL_AddTimer(PAUSE_BETWEEN_PIXELS, draw_callback, &draw_timer);
@@ -161,16 +157,7 @@ int main() {
 	const SDL_Rect text_area = {.x = 0, .y = 600, .w = 1800, .h = 200};
 	TTF_Font *font = TTF_OpenFont("courbd.ttf", 36);
 	
-	const SDL_Color WHITE = {255, 255, 255, 255};
-	
-	/*
-	SDL_Surface *test = TTF_RenderText_Solid(font, "Iteration: 1/9\nIteration Time: 0:00.3\nTotal Time: 3:00.3", (SDL_Color){255, 255, 255, 255});
-	
-	SDL_Rect dest = {.x = 700, .y = 650};
-	SDL_BlitSurface(test, NULL, surface, &dest);
-	
-	SDL_FreeSurface(test);
-	*/
+	const SDL_Color WHITE = {255, 255, 255, 255}, RED = {255, 0, 0, 255};
 	
 	bool should_close = false;
 	while (!should_close) {
@@ -198,21 +185,26 @@ int main() {
 						
 						SDL_FillRect(surface, &text_area, 0x00000000);
 						for (int i = 0; i < 3; i++) {
-							char iter[100], iter_timer[100];
+							char iter[100], timer[100], n[100];
 							
 							sprintf(iter, "Iteration: %d/7", screens[i].current_scale + 1);
 							
 							int time = screens[i].time;
-							sprintf(iter_timer, "Elapsed: %d:%02d", time / 60, time % 60);
+							sprintf(timer, "Elapsed: %d:%02d", time / 60, time % 60);
+							
+							sprintf(n, "%d %s", screens[i].workers, (screens[i].workers == 1) ? "worker" : "parallel workers");
 							
 							SDL_Surface *iter_s = TTF_RenderText_Solid(font, iter, WHITE);
-							SDL_Surface *iter_timer_s = TTF_RenderText_Solid(font, iter_timer, WHITE);
+							SDL_Surface *timer_s = TTF_RenderText_Solid(font, timer, WHITE);
+							SDL_Surface *n_s = TTF_RenderText_Solid(font, n, RED);
 							
-							SDL_Rect iter_dest = {.x = (i * 600) + 100, .y = 650}, iter_timer_dest = {.x = (i * 600) + 100, .y = 686};
+							SDL_Rect iter_dest = {.x = (i * 600) + 100, .y = 650}, timer_dest = {.x = (i * 600) + 100, .y = 686}, n_dest = {.x = (i * 600) + 100, .y = 722};
 							SDL_BlitSurface(iter_s, NULL, surface, &iter_dest);
-							SDL_BlitSurface(iter_timer_s, NULL, surface, &iter_timer_dest);
+							SDL_BlitSurface(timer_s, NULL, surface, &timer_dest);
+							SDL_BlitSurface(n_s, NULL, surface, &n_dest);
 							
-							SDL_FreeSurface(iter_timer_s);
+							SDL_FreeSurface(n_s);
+							SDL_FreeSurface(timer_s);
 							SDL_FreeSurface(iter_s);
 						}
 					} else if (current_event.user.code == 1) {
