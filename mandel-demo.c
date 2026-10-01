@@ -7,7 +7,9 @@
 #define SCREEN_SIZE 600 / PIXEL_SIZE
 #define PAUSE_BETWEEN_PIXELS 16
 
-uint32_t palette[] = {0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x000000};
+//uint32_t palette[] = {0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x000000};
+uint32_t palette[] = {0x000000, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF, 0xFFFFFF};
+/*
 uint32_t screen_one[SCREEN_SIZE][SCREEN_SIZE], screen_two[SCREEN_SIZE][SCREEN_SIZE], screen_three[SCREEN_SIZE][SCREEN_SIZE];
 
 int screen_x = 0;
@@ -18,27 +20,41 @@ int screen_two_spacing = SCREEN_SIZE / 4;
 
 int screen_three_offset = 0;
 int screen_three_spacing = SCREEN_SIZE / 10;
+*/
 
-void plot(SDL_Surface *surface, int x, int y, Uint32 color) {
-	/*
-	if (x < 0 || x >= surface->w || y < 0 || y >= surface->h) {
-		return;
-	}
-	
-	Uint32 *base = surface->pixels;
-	
-	*(base + (y * (surface->pitch / sizeof(Uint32)) + x)) = color;
-	*/
-	SDL_FillRect(surface, &((SDL_Rect) {x, y, PIXEL_SIZE, PIXEL_SIZE}), color);
+struct screen {
+	int offset, spacing, scale, pix_size;
+	int current_x;
+	bool done;
+	int current_scale, workers;
+	uint32_t data[600][600];
+};
+
+struct scale_points {
+	int scale, pix_size;
+};
+
+struct screen screens[] = {
+				{.offset = 0, .spacing = 1, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 1}, 
+				{.offset = 0, .spacing = 10, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 4}, 
+				{.offset = 0, .spacing = 4, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 10}
+			  };
+			  
+const struct scale_points points[] = {{40, 15}, {60, 10}, {100, 6}, {120, 5}, {200, 3}, {300, 2}, {600, 1}};
+
+SDL_Surface *surface;
+
+void plot(int x, int y, int size, Uint32 color) {
+	SDL_FillRect(surface, &((SDL_Rect) {x, y, size, size}), color);
 }
 
-float scale(float old_value, float old_max, float new_min, float new_max) {
+float lerp(float old_value, float old_max, float new_min, float new_max) {
 	return ((old_value) / (old_max)) * (new_max - new_min) + new_min;
 }
 
-uint32_t get_pixel(int px, int py) {
-	float x0 = scale(px, SCREEN_SIZE, -2.0f, 0.47f);
-	float y0 = scale(py, SCREEN_SIZE, -1.12f, 1.12f);
+uint32_t get_pixel(int px, int py, int scale) {
+	float x0 = lerp(px, scale, -2.0f, 0.47f);
+	float y0 = lerp(py, scale, -1.12f, 1.12f);
 	float x = 0.0f, y = 0.0f;
 	
 	int iteration = 0, max_iteration = 256;
@@ -55,34 +71,58 @@ uint32_t get_pixel(int px, int py) {
 	return color;
 }
 
-void screens_tick() {
-	screen_one[screen_x][screen_one_y] = get_pixel(screen_x, screen_one_y);
-	
-	if (screen_two_offset != screen_two_spacing) {
-		for (int s2_y = screen_two_offset; s2_y < SCREEN_SIZE; s2_y += screen_two_spacing) {
-			screen_two[screen_x][s2_y] = get_pixel(screen_x, s2_y);
+void tick() {
+	for (unsigned int i = 0; i < sizeof(screens) / sizeof(screens[i]); i++) {
+		struct screen *s = &screens[i];
+		
+		if (s->done) continue;
+		
+		if (s->spacing == 1) {
+			//printf("%d %d\n", s->current_x, s->offset);
+			//s->data[s->current_x][s->offset] = get_pixel(s->current_x, s->offset);
+			plot((i * 600) + s->current_x * s->pix_size, s->offset * s->pix_size, s->pix_size, get_pixel(s->current_x, s->offset, s->scale));
+		} else {
+			for (int y = s->offset; y < s->scale; y += s->spacing) {
+				//s->data[s->current_x][i] = get_pixel(s->current_x, i);
+				plot((i * 600) + (s->current_x * s->pix_size), y * s->pix_size, s->pix_size, get_pixel(s->current_x, y, s->scale));
+			}
 		}
-	}
-	
-	if (screen_three_offset != screen_three_spacing) {
-		for (int s3_y = screen_three_offset; s3_y < SCREEN_SIZE; s3_y += screen_three_spacing) {
-			screen_three[screen_x][s3_y] = get_pixel(screen_x, s3_y);
+		
+		s->current_x++;
+		if (s->current_x == s->scale) {
+			s->current_x = 0;
+			s->offset++;
+			/*
+			if (s->spacing == 4) {
+				printf("%d %d\n", s->offset, s->scale);
+			}
+			*/
+			if (s->spacing == 1) {
+				if (s->offset == s->scale) {
+					s->offset = 0;
+					s->done = true;
+				}
+			} else {
+				if (s->offset == s->spacing) {
+					//puts("got here");
+					s->offset = 0;
+					s->done = true;
+				}
+			}
 		}
-	}
-	
-	screen_x++;
-	
-	if (screen_x == SCREEN_SIZE) {
-		screen_one_y++;
-		if (screen_one_y == SCREEN_SIZE) {
-			screen_one_y = 0;
-		}
-		screen_x = 0;
-		if (screen_two_offset != screen_two_spacing) {
-			screen_two_offset++;
-		}
-		if (screen_three_offset != screen_three_spacing) {
-			screen_three_offset++;
+		
+		if (s->done) {
+			s->current_scale++;
+			
+			if (s->current_scale != 6) {
+				s->scale = points[s->current_scale].scale;
+				s->pix_size = points[s->current_scale].pix_size;
+				s->spacing = (s->scale / s->workers);
+				
+				SDL_Rect clear_rect = {.x = (i * 600), .y = 0, .w = 600, .h = 600};
+				SDL_FillRect(surface, &clear_rect, 0x000000);
+				s->done = false;
+			}
 		}
 	}
 }
@@ -100,8 +140,6 @@ uint32_t draw_callback(uint32_t interval, void *param) {
 	event.user = userevent;
 
 	SDL_PushEvent(&event);
-	
-	//puts("callback!");
 	return interval;
 }
 
@@ -112,30 +150,18 @@ int main() {
 	}
 	
 	SDL_Window *window = SDL_CreateWindow("Mandalbrot Demo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1800, 600, 0);
-	SDL_Surface *surface = SDL_GetWindowSurface(window);
+	surface = SDL_GetWindowSurface(window);
 	
 	SDL_TimerID draw_timer = SDL_AddTimer(PAUSE_BETWEEN_PIXELS, draw_callback, &draw_timer);
 	
-	for (int y = 0; y < SCREEN_SIZE; y++) {
-		for (int x = 0; x < SCREEN_SIZE; x++) {
-			screen_one[x][y] = 0x00000000;
-			screen_two[x][y] = 0x00000000;
-			screen_three[x][y] = 0x00000000;
+	/*
+	for (unsigned int i = 0; i < sizeof(screens) / sizeof(screens[i]); i++) {
+		for (int y = 0; y < SCREEN_SIZE; y++) {
+			for (int x = 0; x < SCREEN_SIZE; x++) {
+				screens[i].data[x][y] = 0x00000000;
+			}
 		}
 	}
-	
-	/*
-	screen_one[0][0] = 0x00FF0000;
-	screen_one[1][0] = 0x0000FF00;
-	screen_one[0][1] = 0x000000FF;
-	
-	screen_two[0][0] = 0x00FF0000;
-	screen_two[1][0] = 0x0000FF00;
-	screen_two[0][1] = 0x000000FF;
-	
-	screen_three[0][0] = 0x00FF0000;
-	screen_three[1][0] = 0x0000FF00;
-	screen_three[0][1] = 0x000000FF;
 	*/
 	
 	bool should_close = false;
@@ -158,21 +184,26 @@ int main() {
 					break;
 				}
 				case SDL_USEREVENT: {
-					screens_tick();
+					//screens_tick();
+					tick();
 					break;
 				}
 			}
 		}
 		
-		SDL_FillRect(surface, NULL, 0x000000);
+		//SDL_FillRect(surface, NULL, 0x000000);
 		
-		for (int y = 0; y < SCREEN_SIZE; y++) {
-			for (int x = 0; x < SCREEN_SIZE; x++) {
-				plot(surface, x * PIXEL_SIZE, y * PIXEL_SIZE, screen_one[x][y]);
-				plot(surface, 600 + x * PIXEL_SIZE, y * PIXEL_SIZE, screen_two[x][y]);
-				plot(surface, 1200 + x * PIXEL_SIZE, y * PIXEL_SIZE, screen_three[x][y]);
+		/*
+		for (unsigned int i = 0; i < sizeof(screens) / sizeof(screens[i]); i++) {
+			for (int y = 0; y < screens[i].scale; y++) {
+				for (int x = 0; x < screens[i].scale; x++) {
+					plot(surface, x * PIXEL_SIZE, y * PIXEL_SIZE, screen_one[x][y]);
+					plot(surface, 600 + x * PIXEL_SIZE, y * PIXEL_SIZE, screen_two[x][y]);
+					plot(surface, 1200 + x * PIXEL_SIZE, y * PIXEL_SIZE, screen_three[x][y]);
+				}
 			}
 		}
+		*/
 		SDL_UpdateWindowSurface(window);
 	}
 	
