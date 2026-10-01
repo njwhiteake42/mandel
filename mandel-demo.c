@@ -92,7 +92,7 @@ void tick() {
 		if (s->done) {
 			s->current_scale++;
 			
-			if (s->current_scale != 6) {
+			if (s->current_scale < 7) {
 				s->scale = points[s->current_scale].scale;
 				s->pix_size = points[s->current_scale].pix_size;
 				s->spacing = (s->scale / s->workers);
@@ -187,7 +187,7 @@ int main() {
 						for (int i = 0; i < 3; i++) {
 							char iter[100], timer[100], n[100];
 							
-							sprintf(iter, "Iteration: %d/7", screens[i].current_scale + 1);
+							sprintf(iter, "Iteration: %d/7 (%dx%d)", screens[i].current_scale + 1, screens[i].scale, screens[i].scale);
 							
 							int time = screens[i].time;
 							sprintf(timer, "Elapsed: %d:%02d", time / 60, time % 60);
@@ -198,7 +198,7 @@ int main() {
 							SDL_Surface *timer_s = TTF_RenderText_Solid(font, timer, WHITE);
 							SDL_Surface *n_s = TTF_RenderText_Solid(font, n, RED);
 							
-							SDL_Rect iter_dest = {.x = (i * 600) + 100, .y = 650}, timer_dest = {.x = (i * 600) + 100, .y = 686}, n_dest = {.x = (i * 600) + 100, .y = 722};
+							SDL_Rect iter_dest = {.x = (i * 600) + 50, .y = 650}, timer_dest = {.x = (i * 600) + 50, .y = 686}, n_dest = {.x = (i * 600) + 50, .y = 722};
 							SDL_BlitSurface(iter_s, NULL, surface, &iter_dest);
 							SDL_BlitSurface(timer_s, NULL, surface, &timer_dest);
 							SDL_BlitSurface(n_s, NULL, surface, &n_dest);
