@@ -2,31 +2,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 
-#define PIXEL_SIZE 15
-#define SCREEN_SIZE 600 / PIXEL_SIZE
 #define PAUSE_BETWEEN_PIXELS 16
 
-//uint32_t palette[] = {0x0000FF, 0x00FF00, 0x00FFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x000000};
 uint32_t palette[] = {0x000000, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF, 0xFFFFFF};
-/*
-uint32_t screen_one[SCREEN_SIZE][SCREEN_SIZE], screen_two[SCREEN_SIZE][SCREEN_SIZE], screen_three[SCREEN_SIZE][SCREEN_SIZE];
-
-int screen_x = 0;
-int screen_one_y = 0;
-
-int screen_two_offset = 0;
-int screen_two_spacing = SCREEN_SIZE / 4;
-
-int screen_three_offset = 0;
-int screen_three_spacing = SCREEN_SIZE / 10;
-*/
 
 struct screen {
 	int offset, spacing, scale, pix_size;
 	int current_x;
 	bool done;
 	int current_scale, workers;
+	int time;
 	uint32_t data[600][600];
 };
 
@@ -35,9 +22,9 @@ struct scale_points {
 };
 
 struct screen screens[] = {
-				{.offset = 0, .spacing = 1, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 1}, 
-				{.offset = 0, .spacing = 10, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 4}, 
-				{.offset = 0, .spacing = 4, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 10}
+				{.offset = 0, .spacing = 1, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 1, .time = 0}, 
+				{.offset = 0, .spacing = 10, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 4, .time = 0}, 
+				{.offset = 0, .spacing = 4, .scale = 40, .pix_size = 15, .current_x = 0, .done = false, .current_scale = 0, .workers = 10, .time = 0}
 			  };
 			  
 const struct scale_points points[] = {{40, 15}, {60, 10}, {100, 6}, {120, 5}, {200, 3}, {300, 2}, {600, 1}};
@@ -92,11 +79,6 @@ void tick() {
 		if (s->current_x == s->scale) {
 			s->current_x = 0;
 			s->offset++;
-			/*
-			if (s->spacing == 4) {
-				printf("%d %d\n", s->offset, s->scale);
-			}
-			*/
 			if (s->spacing == 1) {
 				if (s->offset == s->scale) {
 					s->offset = 0;
@@ -143,25 +125,51 @@ uint32_t draw_callback(uint32_t interval, void *param) {
 	return interval;
 }
 
+uint32_t timer_callback(uint32_t interval, void *param) {
+	SDL_Event event;
+	SDL_UserEvent userevent;
+
+	userevent.type = SDL_USEREVENT;
+	userevent.code = 1;
+	userevent.data1 = NULL;
+	userevent.data2 = NULL;
+
+	event.type = SDL_USEREVENT;
+	event.user = userevent;
+
+	SDL_PushEvent(&event);
+	return interval;
+}
+
 int main() {
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
 		printf("error: %s\n", SDL_GetError());
 		SDL_Quit();
 	}
 	
-	SDL_Window *window = SDL_CreateWindow("Mandalbrot Demo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1800, 600, 0);
+	if (TTF_Init() != 0) {
+		printf("error: %s\n", TTF_GetError());
+		SDL_Quit();
+	}
+	
+	SDL_Window *window = SDL_CreateWindow("Mandalbrot Demo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1800, 800, 0);
 	surface = SDL_GetWindowSurface(window);
 	
 	SDL_TimerID draw_timer = SDL_AddTimer(PAUSE_BETWEEN_PIXELS, draw_callback, &draw_timer);
+	SDL_TimerID clock = SDL_AddTimer(1000, timer_callback, &clock);
+	
+	const SDL_Rect text_area = {.x = 0, .y = 600, .w = 1800, .h = 200};
+	TTF_Font *font = TTF_OpenFont("courbd.ttf", 36);
+	
+	const SDL_Color WHITE = {255, 255, 255, 255};
 	
 	/*
-	for (unsigned int i = 0; i < sizeof(screens) / sizeof(screens[i]); i++) {
-		for (int y = 0; y < SCREEN_SIZE; y++) {
-			for (int x = 0; x < SCREEN_SIZE; x++) {
-				screens[i].data[x][y] = 0x00000000;
-			}
-		}
-	}
+	SDL_Surface *test = TTF_RenderText_Solid(font, "Iteration: 1/9\nIteration Time: 0:00.3\nTotal Time: 3:00.3", (SDL_Color){255, 255, 255, 255});
+	
+	SDL_Rect dest = {.x = 700, .y = 650};
+	SDL_BlitSurface(test, NULL, surface, &dest);
+	
+	SDL_FreeSurface(test);
 	*/
 	
 	bool should_close = false;
@@ -185,31 +193,51 @@ int main() {
 				}
 				case SDL_USEREVENT: {
 					//screens_tick();
-					tick();
+					if (current_event.user.code == 0) {
+						tick();
+						
+						SDL_FillRect(surface, &text_area, 0x00000000);
+						for (int i = 0; i < 3; i++) {
+							char iter[100], iter_timer[100];
+							
+							sprintf(iter, "Iteration: %d/7", screens[i].current_scale + 1);
+							
+							int time = screens[i].time;
+							sprintf(iter_timer, "Elapsed: %d:%02d", time / 60, time % 60);
+							
+							SDL_Surface *iter_s = TTF_RenderText_Solid(font, iter, WHITE);
+							SDL_Surface *iter_timer_s = TTF_RenderText_Solid(font, iter_timer, WHITE);
+							
+							SDL_Rect iter_dest = {.x = (i * 600) + 100, .y = 650}, iter_timer_dest = {.x = (i * 600) + 100, .y = 686};
+							SDL_BlitSurface(iter_s, NULL, surface, &iter_dest);
+							SDL_BlitSurface(iter_timer_s, NULL, surface, &iter_timer_dest);
+							
+							SDL_FreeSurface(iter_timer_s);
+							SDL_FreeSurface(iter_s);
+						}
+					} else if (current_event.user.code == 1) {
+						for (int i = 0; i < 3; i++) {
+							if (screens[i].done) continue;
+							screens[i].time++;
+						}
+					}
+					
+					
 					break;
 				}
 			}
 		}
 		
-		//SDL_FillRect(surface, NULL, 0x000000);
-		
-		/*
-		for (unsigned int i = 0; i < sizeof(screens) / sizeof(screens[i]); i++) {
-			for (int y = 0; y < screens[i].scale; y++) {
-				for (int x = 0; x < screens[i].scale; x++) {
-					plot(surface, x * PIXEL_SIZE, y * PIXEL_SIZE, screen_one[x][y]);
-					plot(surface, 600 + x * PIXEL_SIZE, y * PIXEL_SIZE, screen_two[x][y]);
-					plot(surface, 1200 + x * PIXEL_SIZE, y * PIXEL_SIZE, screen_three[x][y]);
-				}
-			}
-		}
-		*/
 		SDL_UpdateWindowSurface(window);
 	}
 	
+	SDL_RemoveTimer(clock);
 	SDL_RemoveTimer(draw_timer);
 	
 	SDL_DestroyWindow(window);
+	
+	TTF_CloseFont(font);
+	TTF_Quit();
 	SDL_Quit();
 	
 	return 0;
